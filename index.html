@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Initials Avatar Generator</title>
+<style>
+  :root {
+    --bg: #f3f5f4;
+    --panel: #ffffff;
+    --ink: #17302b;
+    --muted: #5d716c;
+    --line: #d5deda;
+    --accent: #0f6b5c;
+    --accent-ink: #ffffff;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    display: grid;
+    place-items: center;
+    padding: 24px;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
+  }
+  main {
+    width: 100%;
+    max-width: 760px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    overflow: hidden;
+  }
+  .controls { padding: 32px; display: flex; flex-direction: column; gap: 22px; }
+  h1 { margin: 0; font-size: 1.5rem; line-height: 1.2; }
+  .sub { margin: 6px 0 0; color: var(--muted); font-size: .95rem; }
+  label, legend { font-weight: 600; font-size: .9rem; display: block; margin-bottom: 8px; padding: 0; }
+  fieldset { border: 0; margin: 0; padding: 0; }
+  input[type="text"] {
+    width: 100%;
+    padding: 12px 14px;
+    font: inherit;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: #fff;
+    color: var(--ink);
+  }
+  .options { display: flex; gap: 8px; flex-wrap: wrap; }
+  .options input { position: absolute; opacity: 0; pointer-events: none; }
+  .options label {
+    margin: 0;
+    padding: 9px 14px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 500;
+    background: #fff;
+  }
+  .options input:checked + label {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--accent-ink);
+  }
+  .options input:focus-visible + label,
+  input[type="text"]:focus-visible,
+  button:focus-visible { outline: 3px solid #7fc4b8; outline-offset: 2px; }
+  button {
+    padding: 13px 18px;
+    font: inherit;
+    font-weight: 600;
+    border: 0;
+    border-radius: 8px;
+    background: var(--accent);
+    color: var(--accent-ink);
+    cursor: pointer;
+  }
+  button:disabled { background: #b9c7c3; cursor: not-allowed; }
+  .preview {
+    background: repeating-conic-gradient(#e9eeec 0% 25%, #f6f8f7 0% 50%) 50% / 20px 20px;
+    border-left: 1px solid var(--line);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    padding: 32px;
+    min-height: 340px;
+  }
+  canvas { max-width: 100%; height: auto; display: block; }
+  .meta { color: var(--muted); font-size: .85rem; margin: 0; background: rgba(255,255,255,.85); padding: 4px 10px; border-radius: 6px; }
+  @media (max-width: 640px) {
+    main { grid-template-columns: 1fr; }
+    .preview { border-left: 0; border-top: 1px solid var(--line); }
+  }
+</style>
+</head>
+<body>
+<main>
+  <section class="controls">
+    <div>
+      <h1>Initials avatar generator</h1>
+      <p class="sub">Type a name to get a profile picture you can download.</p>
+    </div>
+
+    <div>
+      <label for="name">Full name</label>
+      <input id="name" type="text" value="Aisha Ramjan" autocomplete="off" placeholder="e.g. Aisha Ramjan">
+    </div>
+
+    <fieldset>
+      <legend>Size</legend>
+      <div class="options" id="sizes">
+        <input type="radio" name="size" id="s64" value="64"><label for="s64">64 px</label>
+        <input type="radio" name="size" id="s128" value="128" checked><label for="s128">128 px</label>
+        <input type="radio" name="size" id="s256" value="256"><label for="s256">256 px</label>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Shape</legend>
+      <div class="options" id="shapes">
+        <input type="radio" name="shape" id="h-circle" value="circle" checked><label for="h-circle">Circle</label>
+        <input type="radio" name="shape" id="h-rounded" value="rounded"><label for="h-rounded">Rounded</label>
+        <input type="radio" name="shape" id="h-square" value="square"><label for="h-square">Square</label>
+      </div>
+    </fieldset>
+
+    <button id="download" type="button">Download PNG</button>
+  </section>
+
+  <section class="preview" aria-live="polite">
+    <canvas id="avatar" width="128" height="128" role="img" aria-label="Avatar preview"></canvas>
+    <p class="meta" id="meta"></p>
+  </section>
+</main>
+
+<script>
+  // Colours with enough contrast against white text.
+  const COLORS = [
+    "#0f6b5c", "#b3412f", "#3d5a99", "#8a4f9e", "#a8661a", "#2b7a9e",
+    "#5a7a1e", "#a63a6b", "#4b5563", "#7a4a2b", "#1f7a4d", "#6b4fbb"
+  ];
+
+  const nameInput = document.getElementById("name");
+  const canvas = document.getElementById("avatar");
+  const ctx = canvas.getContext("2d");
+  const downloadBtn = document.getElementById("download");
+  const meta = document.getElementById("meta");
+
+  // Clean the name: trim, collapse spaces. Colours ignore letter case.
+  function clean(name) {
+    return name.trim().replace(/\s+/g, " ");
+  }
+
+  // "Aisha Ramjan" -> "AR". One word -> one letter. 3+ words -> first and last.
+  function getInitials(name) {
+    const words = clean(name).split(" ").filter(Boolean);
+    if (words.length === 0) return "";
+    const first = Array.from(words[0])[0];
+    if (words.length === 1) return first.toUpperCase();
+    const last = Array.from(words[words.length - 1])[0];
+    return (first + last).toUpperCase();
+  }
+
+  // Same name always gives the same number (simple string hash).
+  function hash(str) {
+    let h = 0;
+    for (let i = 0; i < str.length; i++) {
+      h = (h * 31 + str.charCodeAt(i)) >>> 0;
+    }
+    return h;
+  }
+
+  function getColor(name) {
+    return COLORS[hash(clean(name).toLowerCase()) % COLORS.length];
+  }
+
+  function getSize() {
+    return parseInt(document.querySelector('input[name="size"]:checked').value, 10);
+  }
+
+  function getShape() {
+    return document.querySelector('input[name="shape"]:checked').value;
+  }
+
+  function shapePath(size, shape) {
+    ctx.beginPath();
+    if (shape === "circle") {
+      ctx.arc(size / 2, size / 2, size / 2, 0, Math.PI * 2);
+    } else if (shape === "rounded") {
+      ctx.roundRect(0, 0, size, size, size * 0.22);
+    } else {
+      ctx.rect(0, 0, size, size);
+    }
+    ctx.closePath();
+  }
+
+  function draw() {
+    const name = nameInput.value;
+    const initials = getInitials(name);
+    const size = getSize();
+    const shape = getShape();
+
+    // Setting width/height also clears the canvas, so the corners stay transparent.
+    canvas.width = size;
+    canvas.height = size;
+    canvas.style.width = size + "px";
+
+    downloadBtn.disabled = !initials;
+
+    if (!initials) {
+      ctx.fillStyle = "#c9d3cf";
+      shapePath(size, shape);
+      ctx.fill();
+      meta.textContent = "Enter a name to see the avatar";
+      return;
+    }
+
+    ctx.fillStyle = getColor(name);
+    shapePath(size, shape);
+    ctx.fill();
+
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "600 " + Math.round(size * 0.4) + 'px "Segoe UI", system-ui, -apple-system, Roboto, sans-serif';
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    // Small nudge up: "middle" baseline sits a little low for capital letters.
+    ctx.fillText(initials, size / 2, size / 2 + size * 0.02);
+
+    meta.textContent = initials + " · " + size + " × " + size + " px";
+  }
+
+  function download() {
+    const initials = getInitials(nameInput.value);
+    if (!initials) return;
+    const slug = clean(nameInput.value).toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "-").replace(/^-|-$/g, "") || "avatar";
+    canvas.toBlob(function (blob) {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "avatar-" + slug + "-" + getSize() + ".png";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    }, "image/png");
+  }
+
+  nameInput.addEventListener("input", draw);
+  document.querySelectorAll('input[type="radio"]').forEach(function (r) {
+    r.addEventListener("change", draw);
+  });
+  downloadBtn.addEventListener("click", download);
+
+  draw();
+</script>
+</body>
+</html>
